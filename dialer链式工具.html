@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Dialer 链式节点生成器</title>
+
+<style>
+body {
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+  background:#f0f2f5;
+  padding:20px;
+}
+h1 { text-align:center; margin-bottom:30px; }
+.section {
+  background:#fff;
+  padding:20px;
+  margin-bottom:20px;
+  border-radius:12px;
+  box-shadow:0 8px 24px rgba(0,0,0,.06);
+}
+textarea,input,select {
+  width:100%;
+  padding:8px;
+  margin:6px 0;
+  border-radius:6px;
+  border:1px solid #d9d9d9;
+}
+textarea { font-family:monospace; min-height:80px; }
+button {
+  background:#1677ff;
+  color:#fff;
+  border:none;
+  padding:8px 14px;
+  border-radius:6px;
+  cursor:pointer;
+}
+button.danger { background:#ff4d4f; }
+.inline { display:flex; gap:8px; }
+.inline>* { flex:1; }
+.node-item,.rule-item {
+  background:#fafafa;
+  border-radius:8px;
+  padding:12px;
+  margin-top:10px;
+}
+.output {
+  background:#0f172a;
+  color:#22c55e;
+  border-radius:8px;
+}
+.small { font-size:12px; color:#666; }
+</style>
+</head>
+
+<body>
+
+<h1>🧩 Dialer 链式节点生成器 Pro</h1>
+
+<div class="section">
+<h2>① 批量粘贴 SOCKS / Clash 节点</h2>
+<textarea id="bulkInput" placeholder="示例：
+109.197.21.16:63567:user:pass
+jp242.kookeey.info:21350:7913e609:aff1bdaa
+7913e609:aff1bdaa@jp242.kookeey.info:21350
+socks5://user:pass@jp242.kookeey.info:21350
+- {name: VLESS-TCP, server: 1.2.3.4, port: 443, type: vless, uuid: xxxx}
+- {"name":"美国1","server":"global.sta.711proxy.com","port":"30000","type":"socks5","username":"USER435510-ip-173.232.3.126","password":"78d5d7","udp":false}
+注意:冒号用英文输入法的冒号
+"></textarea>
+<div class="inline">
+  <button onclick="parseBulk(true)">重新解析（清空旧节点）</button>
+  <button onclick="parseBulk(false)">追加解析</button>
+</div>
+</div>
+
+<div class="section">
+<h2>①-② 批量默认配置</h2>
+<p class="small">新解析的节点将自动继承此配置，可在节点列表中单独修改</p>
+<div class="inline">
+  <select id="defaultDialerSelect" onchange="updateDefaultDialer()">
+    <option value="">选择默认前置代理</option>
+  </select>
+  <input id="defaultDialerManual" placeholder="手动输入默认前置代理（优先级更高）" onchange="updateDefaultDialer()">
+</div>
+<label style="display:flex; align-items:center; margin-top:10px; gap:8px;">
+  <input type="checkbox" id="advancedMode" onchange="toggleAdvancedMode()">
+  <span>⚙️ 启用高级模式（代理组管理）</span>
+</label>
+<div id="advancedGroupSection" style="display:none; margin-top:10px;">
+  <label style="display:flex; align-items:center; gap:8px;">
+    <input type="checkbox" id="autoGenerateGroups" onchange="renderNodes()">
+    <span>自动为每个节点生成一个代理组</span>
+  </label>
+</div>
+</div>
+
+<div class="section">
+<h2>② 节点列表（可改名 + 前置代理）</h2>
+<div style="background:#f0f2f5; padding:12px; border-radius:8px; margin-bottom:15px;">
+  <h3 style="margin-top:0; margin-bottom:10px; font-size:14px;">批量节点命名</h3>
+  <div class="inline">
+    <input id="batchRenamePrefix" placeholder="节点名前缀（例如：JP-住宅-）">
+    <input type="number" id="batchRenameStart" placeholder="起始编号" value="1" min="1">
+    <button onclick="applyBatchRename()">应用到所有节点</button>
+  </div>
+</div>
+<div id="nodeList"></div>
+</div>
+
+<div class="section">
+<h2>③ SRC-IP 规则</h2>
+<p class="small">规则目标默认使用节点名称，可直接在 Clash Meta 中使用</p>
+<div class="inline">
+<input id="r_ip" placeholder="192.168.100.2">
+<select id="r_mask"><option>/32</option><option>/24</option></select>
+<select id="r_target_select" onchange="updateRuleTarget()">
+  <option value="">选择节点</option>
+</select>
+<input id="r_target" placeholder="或手动输入节点名称/代理组名" onchange="updateRuleTargetSelect()">
+</div>
+<div id="advancedRuleSection" style="display:none; margin-top:8px;">
+  <p class="small" style="color:#999;">高级模式：可选择代理组作为目标</p>
+</div>
+<button onclick="addRule()">添加规则</button>
+<div id="ruleList"></div>
+
+<h3 style="margin-top:20px; margin-bottom:10px;">批量 SRC-IP 生成</h3>
+<p class="small">一次性生成多条 SRC-IP 规则</p>
+<div class="inline">
+<input id="batch_start_ip" placeholder="起始 IP（如 192.168.100.2）">
+<input type="number" id="batch_count" placeholder="数量（如 10）" min="1" value="1">
+<select id="batch_mask"><option>/32</option><option>/24</option></select>
+</div>
+<div class="inline" style="margin-top:8px;">
+<label style="display:flex; align-items:center; gap:8px; flex:1;">
+  <input type="radio" name="batch_mode" value="sequential" checked>
+  <span>顺序绑定节点</span>
+</label>
+<label style="display:flex; align-items:center; gap:8px; flex:1;">
+  <input type="radio" name="batch_mode" value="single">
+  <span>统一绑定目标</span>
+</label>
+</div>
+<input id="batch_single_target" placeholder="统一目标名称（节点名或代理组名）" style="margin-top:8px; display:none;">
+<button onclick="addBatchRules()" style="margin-top:8px;">批量生成规则</button>
+</div>
+
+<div class="section">
+<h2>④ Dialer 节点（Clash proxies）</h2>
+<textarea id="outNodes" class="output"></textarea>
+<button onclick="copyText('outNodes')">复制</button>
+</div>
+
+<div class="section">
+<h2>⑤ 节点名称列表</h2>
+<textarea id="outNames" class="output"></textarea>
+<button onclick="copyText('outNames')">复制</button>
+</div>
+
+<div class="section">
+<h2>⑥ SRC-IP 规则输出</h2>
+<textarea id="outRules" class="output"></textarea>
+<button onclick="copyText('outRules')">复制</button>
+</div>
+
+<div class="section" id="groupsSection" style="display:none;">
+<h2>⑦ 代理组配置（proxy-groups）</h2>
+<p class="small">仅在启用高级模式时显示</p>
+<textarea id="outGroups" class="output"></textarea>
+<button onclick="copyText('outGroups')">复制</button>
+</div>
+
+<button onclick="generate()">🚀 生成全部</button>
+
+<script>
+let nodes = [];
+let rules = [];
+let idx = 1;
+let groupIdx = 1; // 代理组序号计数器
+
+// 批量默认配置
+let defaultDialer = ""; // 默认前置代理（从下拉框或手动输入获取）
+
+const dialers = ["🇭🇰 香港节点","🇸🇬 狮城节点","🇯🇵 日本节点","🇺🇲 美国节点","🇨🇳 台湾节点","策略1","策略2"];
+
+// 切换高级模式
+function toggleAdvancedMode() {
+  const advancedMode = document.getElementById("advancedMode").checked;
+  const advancedGroupSection = document.getElementById("advancedGroupSection");
+  const advancedRuleSection = document.getElementById("advancedRuleSection");
+  const groupsSection = document.getElementById("groupsSection");
+  
+  if (advancedMode) {
+    advancedGroupSection.style.display = "block";
+    advancedRuleSection.style.display = "block";
+    groupsSection.style.display = "block";
+  } else {
+    advancedGroupSection.style.display = "none";
+    advancedRuleSection.style.display = "none";
+    groupsSection.style.display = "none";
+    // 关闭自动生成代理组
+    document.getElementById("autoGenerateGroups").checked = false;
+  }
+  
+  renderNodes();
+  updateRuleTargetSelectOptions();
+}
+
+function uniqueName(base){
+  let name = base, i = 1;
+  while(nodes.some(n=>n.name===name)) name = base+"-"+i++;
+  return name;
+}
+
+// 生成唯一的代理组名称
+function uniqueGroupName(base){
+  // 如果 base 是 "策略1" 这样的格式，提取数字部分
+  const match = base.match(/^(.+?)(\d+)$/);
+  if (match) {
+    const prefix = match[1]; // "策略"
+    let num = parseInt(match[2]); // 1
+    let name = base;
+    while(nodes.some(n=>n.groupName===name)) {
+      num++;
+      name = prefix + num;
+    }
+    return name;
+  }
+  // 如果不是数字结尾，使用原来的逻辑
+  let name = base, i = 1;
+  while(nodes.some(n=>n.groupName===name)) name = base + "-" + i++;
+  return name;
+}
+
+// 获取批量默认前置代理配置（统一数据源）
+function getDefaultDialer(){
+  const manual = document.getElementById("defaultDialerManual")?.value?.trim() || "";
+  const select = document.getElementById("defaultDialerSelect")?.value?.trim() || "";
+  return manual || select || "";
+}
+
+// 更新默认前置代理配置
+function updateDefaultDialer(){
+  const manual = document.getElementById("defaultDialerManual").value.trim();
+  const select = document.getElementById("defaultDialerSelect").value;
+  // 手动输入优先级更高
+  defaultDialer = manual || select || "";
+}
+
+// 更新规则目标选择下拉框
+function updateRuleTargetSelect(){
+  const select = document.getElementById("r_target_select");
+  const input = document.getElementById("r_target");
+  // 如果手动输入了，清空下拉选择
+  if(input.value.trim()) {
+    select.value = "";
+  }
+}
+
+// 更新规则目标输入框
+function updateRuleTarget(){
+  const select = document.getElementById("r_target_select");
+  const input = document.getElementById("r_target");
+  // 如果选择了下拉框，填充到输入框
+  if(select.value) {
+    input.value = select.value;
+  }
+}
+
+// 初始化默认前置代理下拉框
+function initDefaultDialerSelect(){
+  const select = document.getElementById("defaultDialerSelect");
+  select.innerHTML = '<option value="">选择默认前置代理</option>';
+  dialers.forEach(d => {
+    select.innerHTML += `<option value="${d}">${d}</option>`;
+  });
+}
+
+// 更新规则目标下拉框（默认显示节点名称，高级模式可显示代理组）
+function updateRuleTargetSelectOptions(){
+  const select = document.getElementById("r_target_select");
+  const currentValue = select.value;
+  const advancedMode = document.getElementById("advancedMode")?.checked || false;
+  
+  select.innerHTML = '<option value="">选择节点</option>';
+  
+  // 默认显示所有节点名称
+  nodes.forEach(n => {
+    select.innerHTML += `<option value="${n.name}">节点: ${n.name}</option>`;
+  });
+  
+  // 高级模式：同时显示代理组名称
+  if (advancedMode) {
+    const groupNames = [...new Set(nodes.map(n => n.groupName).filter(Boolean))];
+    groupNames.forEach(name => {
+      select.innerHTML += `<option value="${name}">代理组: ${name}</option>`;
+    });
+  }
+  
+  // 恢复之前的选择
+  if(currentValue) {
+    const optionExists = Array.from(select.options).some(opt => opt.value === currentValue);
+    if(optionExists) {
+      select.value = currentValue;
+    }
+  }
+}
+
+function isSocks(line) {
+  const s = line.trim();
+
+  // BUG 2 修复：socks5:// 和 socks:// 必须最优先判断，使用 startsWith
+  if (s.toLowerCase().startsWith('socks5://') || s.toLowerCase().startsWith('socks://')) {
+    return true;
+  }
+
+  // user:pass@host:port
+  if (/^[^:@\s]+:[^@\s]+@[a-zA-Z0-9.-]+:\d{2,5}$/.test(s)) return true;
+
+  // host:port 或 host:port:user:pass（host 支持域名/IP）
+  if (/^[a-zA-Z0-9.-]+:\d{2,5}(:[^:\s]+(:[^:\s]+)?)?$/.test(s)) return true;
+
+  return false;
+}
+
+function parseSocksLine(line) {
+  const s = line.trim();
+  
+  // BUG 2 修复：socks5:// 和 socks:// 的解析逻辑必须放在函数第一段
+  // 优先使用正则表达式解析，更可靠
+  if (s.toLowerCase().startsWith('socks5://') || s.toLowerCase().startsWith('socks://')) {
+    // 使用正则表达式直接解析：socks5://[user:pass@]host:port
+    // 匹配格式：socks5://user:pass@host:port 或 socks5://host:port
+    // 支持域名、IP地址，以及包含连字符的域名
+    const regexMatch = s.match(/^socks5?:\/\/(?:([^:@\s]+):([^@\s]+)@)?([a-zA-Z0-9.\-]+):(\d{2,5})/i);
+    if (regexMatch && regexMatch[3] && regexMatch[4]) {
+      return {
+        user: regexMatch[1] ? decodeURIComponent(regexMatch[1]) : "",
+        pass: regexMatch[2] ? decodeURIComponent(regexMatch[2]) : "",
+        server: regexMatch[3],
+        port: regexMatch[4],
+        remark: ""
+      };
+    }
+    
+    // 如果正则失败，尝试使用 URL API（作为备用方案）
+    try {
+      const u = new URL(s);
+      const hostname = u.hostname || "";
+      let port = u.port || "";
+      
+      // 如果 port 为空，从 host 中提取
+      if (!port && u.host) {
+        const hostMatch = u.host.match(/:(\d{2,5})$/);
+        if (hostMatch) {
+          port = hostMatch[1];
+        }
+      }
+      
+      // 如果还是没有，从原始字符串中提取
+      if (!port) {
+        const portMatch = s.match(/:(\d{2,5})(?:\/|$|#)/);
+        if (portMatch) {
+          port = portMatch[1];
+        }
+      }
+      
+      if (hostname && port) {
+        return {
+          user: u.username ? decodeURIComponent(u.username) : "",
+          pass: u.password ? decodeURIComponent(u.password) : "",
+          server: hostname,
+          port: port,
+          remark: ""
+        };
+      }
+    } catch (e) {
+      // URL 解析失败，继续执行下面的逻辑
+    }
+  }
+
+  // 对其他格式进行清洗处理
+  const clean = s.replace(/\{.+?\}|#.+$/, "");
+
+  // ① user:pass@host:port
+  const m = clean.match(/^([^:@\s]+):([^@\s]+)@([^:\s]+):(\d{2,5})$/);
+  if (m) {
+    return { user: m[1], pass: m[2], server: m[3], port: m[4], remark: "" };
+  }
+
+  // ② host:port[:user[:pass]]
+  const parts = clean.split(":");
+  return {
+    server: parts[0],
+    port: parts[1],
+    user: parts[2] || "",
+    pass: parts[3] || "",
+    remark: ""
+  };
+}
+
+function isClash(line){
+  const trimmed = line.trim();
+  // 支持两种格式：
+  // 1. YAML 风格：- {name: xxx, type: xxx, ...}
+  // 2. JSON 风格：- {"name":"xxx","type":"xxx",...}
+  return trimmed.startsWith("- {") && (trimmed.includes("type:") || trimmed.includes('"type"'));
+}
+
+function parseBulk(reset){
+  if (reset) {
+    nodes = [];
+    idx = 1;
+    groupIdx = 1; // 重置代理组序号
+  }
+
+  // 获取批量默认前置代理配置（统一使用 getDefaultDialer()）
+  const dft = getDefaultDialer();
+
+  // 检查是否启用自动生成代理组
+  const autoGenGroups = document.getElementById("autoGenerateGroups").checked;
+
+  bulkInput.value
+    .split("\n")
+    .map(l => l.trim())
+    .filter(Boolean)
+    .forEach(line => {
+
+      if (isSocks(line)) {
+        const s = parseSocksLine(line);
+
+        // 生成代理组名称（如果启用）
+        const groupName = autoGenGroups ? uniqueGroupName("策略" + groupIdx++) : "";
+
+        nodes.push({
+          type: "socks",
+          name: uniqueName("SOCKS-" + idx++),
+          server: s.server,   // ✅ 统一用 server
+          port: s.port,
+          user: s.user,
+          pass: s.pass,
+          dialer: dft, // 应用默认前置代理
+          groupName: groupName // 代理组名称
+        });
+        return;
+      }
+
+      if (isClash(line)) {
+        let nodeName = `CLASH-${idx++}`;
+        
+        // 尝试解析为 JSON 格式（带引号）
+        try {
+          // 提取 - { ... } 中的 JSON 部分
+          const jsonMatch = line.match(/^-\s*(\{.+\})/);
+          if (jsonMatch) {
+            const jsonStr = jsonMatch[1];
+            const obj = JSON.parse(jsonStr);
+            if (obj.name) {
+              nodeName = obj.name;
+            }
+          }
+        } catch (e) {
+          // JSON 解析失败，尝试正则匹配（YAML 风格：name: xxx 或 "name": "xxx"）
+          // 支持两种格式：
+          // 1. name: xxx (YAML 风格，可能带引号)
+          // 2. "name": "xxx" (JSON 风格)
+          const m1 = line.match(/"name"\s*:\s*"([^"]+)"/); // JSON 风格："name": "xxx"
+          const m2 = line.match(/name\s*:\s*([^,}]+)/); // YAML 风格：name: xxx
+          const m = m1 || m2;
+          if (m) {
+            nodeName = m[1].trim().replace(/^["']|["']$/g, ''); // 去除可能的引号
+          }
+        }
+        
+        // 生成代理组名称（如果启用）
+        const groupName = autoGenGroups ? uniqueGroupName("策略" + groupIdx++) : "";
+
+        nodes.push({
+          type: "clash",
+          name: uniqueName(nodeName),
+          raw: line,
+          dialer: dft, // 应用默认前置代理
+          groupName: groupName // 代理组名称
+        });
+      }
+    });
+
+  renderNodes();
+  updateRuleTargetSelectOptions(); // 更新规则目标下拉框
+}
+
+// 批量重命名节点
+function batchRenameNodes(prefix, start = 1) {
+  let i = start;
+  nodes.forEach(n => {
+    n.name = `${prefix}${i++}`;
+  });
+  renderNodes();
+  updateRuleTargetSelectOptions();
+}
+
+// 应用批量重命名
+function applyBatchRename() {
+  const prefix = document.getElementById("batchRenamePrefix").value.trim();
+  const start = parseInt(document.getElementById("batchRenameStart").value) || 1;
+  
+  if (!prefix) {
+    alert("请填写节点名前缀");
+    return;
+  }
+  
+  if (nodes.length === 0) {
+    alert("没有可重命名的节点");
+    return;
+  }
+  
+  batchRenameNodes(prefix, start);
+}
+
+function renderNodes(){
+  nodeList.innerHTML="";
+  const advancedMode = document.getElementById("advancedMode")?.checked || false;
+  const autoGenGroups = document.getElementById("autoGenerateGroups")?.checked || false;
+  
+  nodes.forEach((n,i)=>{
+    // 确保 groupName 字段存在
+    if(!n.groupName) n.groupName = "";
+    // 确保 dialer 字段存在且不会被意外清空（保护批量默认前置代理）
+    // 注意：这里不初始化 dialer，只在 parseBulk() 或用户明确输入时设置
+    
+    nodeList.innerHTML+=`
+    <div class="node-item">
+      <div style="margin-bottom:8px;">
+        <label style="font-size:12px; color:#666;">节点名称：</label>
+        <input value="${n.name}" onchange="nodes[${i}].name=this.value; updateRuleTargetSelectOptions();">
+      </div>
+      <div class="inline" style="margin-bottom:8px;">
+        <select value="${n.dialer || ''}" onchange="
+          if (this.value.trim() !== '') {
+            nodes[${i}].dialer = this.value.trim();
+          }
+        ">
+          <option value="">选择前置</option>
+          ${dialers.map(d=>`<option value="${d}" ${(n.dialer && n.dialer.trim() === d) ? 'selected' : ''}>${d}</option>`).join("")}
+        </select>
+        <input placeholder="手动输入前置代理" value="${n.dialer || ''}" onchange="
+          if (this.value.trim() !== '') {
+            nodes[${i}].dialer = this.value.trim();
+          }
+        ">
+      </div>
+      ${(advancedMode && autoGenGroups) ? `
+      <div style="margin-bottom:8px;">
+        <label style="font-size:12px; color:#666;">代理组名称：</label>
+        <input value="${n.groupName || ''}" placeholder="策略1" onchange="nodes[${i}].groupName=this.value; updateRuleTargetSelectOptions();">
+      </div>
+      ` : ''}
+      <button class="danger" onclick="nodes.splice(${i},1);renderNodes(); updateRuleTargetSelectOptions();">删除节点</button>
+    </div>`;
+  });
+  
+  // 更新规则目标下拉框
+  updateRuleTargetSelectOptions();
+}
+
+function addRule(){
+  const targetValue = document.getElementById("r_target").value.trim();
+  if(!targetValue) {
+    alert("请填写节点名称或代理组名");
+    return;
+  }
+  rules.push({ip:r_ip.value,mask:r_mask.value,group:targetValue});
+  renderRules();
+  // 清空输入
+  document.getElementById("r_ip").value = "";
+  document.getElementById("r_target").value = "";
+  document.getElementById("r_target_select").value = "";
+}
+
+function renderRules(){
+  ruleList.innerHTML="";
+  rules.forEach((r,i)=>{
+    ruleList.innerHTML+=`
+    <div class="rule-item">
+      ${r.ip}${r.mask} → ${r.group}
+      <button class="danger" onclick="rules.splice(${i},1);renderRules()">删除</button>
+    </div>`;
+  });
+}
+
+// 批量生成 SRC-IP 规则
+function addBatchRules(){
+  const startIP = document.getElementById("batch_start_ip").value.trim();
+  const count = parseInt(document.getElementById("batch_count").value) || 1;
+  const mask = document.getElementById("batch_mask").value;
+  const mode = document.querySelector('input[name="batch_mode"]:checked').value;
+  
+  if(!startIP) {
+    alert("请填写起始 IP");
+    return;
+  }
+  
+  // 验证 IP 格式
+  const ipRegex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+  const match = startIP.match(ipRegex);
+  if(!match) {
+    alert("IP 格式不正确");
+    return;
+  }
+  
+  // 默认使用节点名称列表（不再强制要求代理组）
+  const nodeNames = nodes.map(n => n.name);
+  if(mode === "sequential" && nodeNames.length === 0) {
+    alert("没有可用的节点，请先解析节点");
+    return;
+  }
+  
+  // 解析起始 IP 的四个段
+  let ip1 = parseInt(match[1]);
+  let ip2 = parseInt(match[2]);
+  let ip3 = parseInt(match[3]);
+  let ip4 = parseInt(match[4]);
+  
+  // 验证 IP 段范围
+  if(ip1 > 255 || ip2 > 255 || ip3 > 255 || ip4 > 255) {
+    alert("IP 地址段超出范围（0-255）");
+    return;
+  }
+  
+  // 统一绑定模式：提前获取目标名称
+  let singleTargetName = "";
+  if(mode === "single") {
+    singleTargetName = document.getElementById("batch_single_target").value.trim();
+    if(!singleTargetName) {
+      alert("请填写统一目标名称（节点名或代理组名）");
+      return;
+    }
+  }
+  
+  // 生成规则
+  for(let i = 0; i < count; i++) {
+    // 计算当前 IP（从起始 IP 开始递增）
+    let currentIP1 = ip1;
+    let currentIP2 = ip2;
+    let currentIP3 = ip3;
+    let currentIP4 = ip4 + i; // 从起始 IP 的第 4 段开始递增
+    
+    // 处理 IP 段溢出（从低位到高位进位）
+    while(currentIP4 > 255) {
+      currentIP4 -= 256;
+      currentIP3++;
+    }
+    while(currentIP3 > 255) {
+      currentIP3 -= 256;
+      currentIP2++;
+    }
+    while(currentIP2 > 255) {
+      currentIP2 -= 256;
+      currentIP1++;
+    }
+    if(currentIP1 > 255) {
+      alert(`IP 超出范围：${currentIP1}.${currentIP2}.${currentIP3}.${currentIP4}`);
+      break;
+    }
+    
+    const currentIP = `${currentIP1}.${currentIP2}.${currentIP3}.${currentIP4}`;
+    
+    // 确定目标名称（默认使用节点名称）
+    let targetName;
+    if(mode === "sequential") {
+      // 顺序绑定：节点1 → 节点2 → 节点3...
+      targetName = nodeNames[i % nodeNames.length] || `节点${(i % nodeNames.length) + 1}`;
+    } else {
+      // 统一绑定
+      targetName = singleTargetName;
+    }
+    
+    // 添加到规则列表
+    rules.push({
+      ip: currentIP,
+      mask: mask,
+      group: targetName
+    });
+  }
+  
+  renderRules();
+  updateRuleTargetSelectOptions(); // 更新规则目标下拉框
+  
+  // 清空输入
+  document.getElementById("batch_start_ip").value = "";
+  document.getElementById("batch_count").value = "1";
+}
+
+function generate(){
+  const indent = "  ";
+
+  // 生成 Dialer 节点（Clash proxies）
+  const dft = getDefaultDialer(); // 获取批量默认前置代理
+  outNodes.value = nodes.map(n => {
+    // SOCKS 节点：始终生成 udp:true
+    if (n.type === "socks") {
+      // dialer-proxy 的优先级：节点本身 n.dialer（包括批量默认前置 or 单独修改） > 批量默认前置 > 不输出
+      const dialerFinal = (n.dialer && n.dialer.trim()) ? n.dialer.trim() : dft;
+      const dialerPart = dialerFinal ? `, dialer-proxy: ${dialerFinal}` : "";
+      return indent + `- {name: ${n.name}, type: socks5, server: ${n.server}, port: ${n.port}, username: "${n.user}", password: "${n.pass}", udp: true${dialerPart}}`;
+    }
+
+    // Clash 节点：需要判断 udp 是否已存在
+    let raw = n.raw;
+    let isJsonFormat = false;
+
+    // 检测是否为 JSON 格式（带引号）
+    try {
+      const jsonMatch = raw.match(/^-\s*(\{.+\})/);
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1];
+        JSON.parse(jsonStr); // 验证是否为有效 JSON
+        isJsonFormat = true;
+      }
+    } catch (e) {
+      // 不是 JSON 格式，继续使用 YAML 处理
+    }
+
+    if (isJsonFormat) {
+      // JSON 格式：解析后重新构建为 YAML 格式（Clash 配置通常使用 YAML）
+      try {
+        const jsonMatch = raw.match(/^-\s*(\{.+\})/);
+        if (jsonMatch) {
+          const jsonStr = jsonMatch[1];
+          const obj = JSON.parse(jsonStr);
+          
+          // 更新 name
+          obj.name = n.name;
+          
+          // 如果没有 udp 字段，添加 udp: true
+          if (obj.udp === undefined) {
+            obj.udp = true;
+          }
+          
+          // 添加或更新 dialer-proxy
+          const dialerFinal = (n.dialer && n.dialer.trim()) ? n.dialer.trim() : dft;
+          if (dialerFinal) {
+            obj["dialer-proxy"] = dialerFinal;
+          }
+          
+          // 转换为 YAML 格式字符串
+          const yamlPairs = [];
+          for (const [key, value] of Object.entries(obj)) {
+            if (value === null || value === undefined) {
+              continue; // 跳过 null 和 undefined
+            } else if (typeof value === "boolean") {
+              yamlPairs.push(`${key}: ${value}`);
+            } else if (typeof value === "number") {
+              yamlPairs.push(`${key}: ${value}`);
+            } else if (typeof value === "string") {
+              // 字符串值：如果包含空格、冒号、逗号等特殊字符，需要加引号
+              if (value.includes(" ") || value.includes(":") || value.includes(",") || value.includes("@")) {
+                yamlPairs.push(`${key}: "${value}"`);
+              } else {
+                yamlPairs.push(`${key}: ${value}`);
+              }
+            } else {
+              // 其他类型（如数组、对象）转为字符串
+              yamlPairs.push(`${key}: ${JSON.stringify(value)}`);
+            }
+          }
+          raw = `- {${yamlPairs.join(", ")}}`;
+        }
+      } catch (e) {
+        // JSON 解析失败，回退到正则处理
+        isJsonFormat = false;
+      }
+    }
+
+    if (!isJsonFormat) {
+      // YAML 格式处理（原有逻辑）
+      // ① 统一 name：最终输出的 name 必须来自 n.name，而不是原始 raw
+      //    a) 删除原有的 name 字段（支持两种格式：name: xxx 和 "name": "xxx"）
+      raw = raw.replace(/"name"\s*:\s*"[^"]*",?\s*/g, ""); // JSON 风格
+      raw = raw.replace(/\bname\s*:\s*[^,}]+,?\s*/g, ""); // YAML 风格
+      //    b) 在最前面插入新的 name 字段
+      raw = raw.replace(/^\s*-\s*\{/, `- {name: ${n.name}, `);
+
+      // ② 如果原节点里没有 udp 字段，才补 udp:true（避免重复追加）
+      if (!/\budp\s*:/.test(raw)) {
+        raw = raw.replace(/\}$/, `, udp: true}`);
+      }
+
+      // ③ 追加 dialer-proxy（如果存在）：节点本身 n.dialer > 批量默认前置 > 不输出
+      const dialerFinal = (n.dialer && n.dialer.trim()) ? n.dialer.trim() : dft;
+      if (dialerFinal) {
+        // 检查是否已经包含 dialer-proxy，避免重复
+        if (!/\bdialer-proxy\s*:/.test(raw)) {
+          raw = raw.replace(/\}$/, `, dialer-proxy: ${dialerFinal}}`);
+        } else {
+          // 如果已存在，替换它
+          raw = raw.replace(/\bdialer-proxy\s*:[^,}]+/, `dialer-proxy: ${dialerFinal}`);
+        }
+      }
+    }
+
+    return indent + raw;
+  }).join("\n");
+
+  // 生成节点名称列表
+  outNames.value = nodes
+    .map(n => indent + `- ${n.name}`)
+    .join("\n");
+
+  // 生成 SRC-IP 规则
+  outRules.value = rules
+    .map(r => indent + `- SRC-IP-CIDR,${r.ip}${r.mask},${r.group}`)
+    .join("\n");
+
+  // 生成代理组配置（仅在高级模式且启用自动生成时）
+  const advancedMode = document.getElementById("advancedMode")?.checked || false;
+  const autoGenGroups = document.getElementById("autoGenerateGroups")?.checked || false;
+  if (advancedMode && autoGenGroups) {
+    // 按代理组名称分组节点
+    const groupMap = {};
+    nodes.forEach(n => {
+      const groupName = n.groupName || "策略1"; // 如果没有设置，使用默认值
+      if (!groupMap[groupName]) {
+        groupMap[groupName] = [];
+      }
+      groupMap[groupName].push(n.name);
+    });
+
+    // 生成 proxy-groups 配置（改为紧凑的单行 map 格式）
+    outGroups.value = Object.keys(groupMap)
+      .map(groupName => {
+        // 改为单行 map 格式：proxies 必须保持横向单行数组
+        const proxiesList = groupMap[groupName].join(", ");
+        return `${indent}- {name: ${groupName}, type: select, proxies: [${proxiesList}]}`;
+      })
+      .join("\n");
+  } else {
+    outGroups.value = "";
+  }
+}
+function copyText(id){
+  const el = document.getElementById(id);
+  if (!el) {
+    alert("复制失败：找不到内容");
+    return;
+  }
+
+  const text = el.value || el.innerText || "";
+
+  if (!text) {
+    alert("没有可复制的内容");
+    return;
+  }
+
+  // 使用现代 Clipboard API
+  navigator.clipboard.writeText(text).then(() => {
+    // 可选：给一点反馈
+    alert("已复制到剪贴板");
+  }).catch(err => {
+    console.error(err);
+    alert("复制失败，请手动复制");
+  });
+}
+
+// 页面加载时初始化
+window.onload = function() {
+  initDefaultDialerSelect(); // 初始化默认前置代理下拉框
+  updateRuleTargetSelectOptions(); // 初始化规则目标下拉框
+  
+  // 批量生成模式切换：显示/隐藏统一目标输入框
+  document.querySelectorAll('input[name="batch_mode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      const singleTargetInput = document.getElementById("batch_single_target");
+      if(this.value === "single") {
+        singleTargetInput.style.display = "block";
+      } else {
+        singleTargetInput.style.display = "none";
+      }
+    });
+  });
+};
+</script>
+
+</body>
+</html>
+

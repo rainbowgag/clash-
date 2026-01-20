@@ -1,0 +1,203 @@
+proxy-providers:
+  5aez4xurfxvh:
+    type: http
+    url: "https://url_Example.yaml"
+    proxy: DIRECT
+    interval: 3600
+    health-check:
+      enable: true
+      url: https://www.gstatic.com/generate_204
+      interval: 900
+
+proxy-providers-config:
+  proxy-providers-use: &proxy-providers-use
+    - 5aez4xurfxvh
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+
+pr: &pr
+  proxies:  
+      - 🇭🇰 香港节点
+      - 🇹🇼 台湾节点
+      - 🇯🇵 日本节点
+      - 🇸🇬 狮城节点
+      - 🇺🇲 美国节点
+      - 🇰🇷 韩国节点
+      - ✌手动切换
+      - ♻️ 自动选择
+      - DIRECT
+      
+#====↓↓↓下面填写节点名称，注意和上面↑↑对齐，注意是添加节点名称！不是节点信息
+    
+
+
+
+
+
+proxies:   #↓↓下面填入节点信息
+
+
+
+
+rules:
+  - RULE-SET,private_ip,🎯 全球直连,no-resolve
+  - RULE-SET,youtube_domain,📹 油管视频
+  - RULE-SET,Apple,🍎Apple
+  - RULE-SET,OpenAI,💬 OpenAi
+  - RULE-SET,cn_domain,🎯 全球直连
+  - RULE-SET,geolocation-!cn,🐟 漏网之鱼
+  - RULE-SET,cn_ip,🎯 全球直连
+  - MATCH,🐟 漏网之鱼
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    <<: *pr
+    
+  - name: ✌手动切换
+    type: select
+    use: *proxy-providers-use
+        
+  - name: ♻️ 自动选择
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+  - name: 🍎Apple
+    type: select
+    <<: *pr
+    
+
+  - name: 📹 油管视频
+    type: select
+    <<: *pr
+
+
+  - name: 💬 OpenAi
+    type: select
+    <<: *pr
+
+
+  - name: 🎯 全球直连
+    type: select
+    proxies:
+      - DIRECT
+      - 🚀 节点选择
+
+  - name: 🛑 广告拦截
+    type: select
+    proxies:
+      - REJECT
+      - DIRECT
+
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - ♻️ 自动选择
+      - DIRECT
+
+  - name: 🇭🇰 香港节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+    filter: (?i)香港|香江|Hong Kong|HK|🇭🇰|Hongkong
+    
+  - name: 🇹🇼 台湾节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+    filter: (?i)台湾|台灣|Taiwan|TW|🇹🇼
+
+  - name: 🇯🇵 日本节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+    filter: (?i)日本|JP|Japan|🇯🇵|Tokyo
+
+  - name: 🇸🇬 狮城节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+    filter: (?i)新加坡|SG|Singapore|🇸🇬
+
+  - name: 🇺🇲 美国节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 150
+    use: *proxy-providers-use
+    filter: (?i)美国|US|United States|🇺🇸|California|New York
+
+  - name: 🇰🇷 韩国节点
+    type: url-test
+    url: http://www.gstatic.com/generate_204
+    interval: 300
+    tolerance: 50
+    use: *proxy-providers-use
+    filter: (?i)韩国|KR|Korea|🇰🇷|Seoul
+rule-anchor:
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}
+rule-providers:
+  private_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
+  cn_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
+  geolocation-!cn:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs"
+
+  private_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
+  cn_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
+  youtube_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/youtube.mrs"
+  Apple:
+    <<: *domain
+    url: https://api.dler.io/getruleset?type=6&url=aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL0FDTDRTU1IvQUNMNFNTUi9tYXN0ZXIvQ2xhc2gvQXBwbGUubGlzdA
+    path: ./providers/Apple.yaml
+  OpenAI:
+    <<: *domain
+    url: https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Clash/OpenAI/OpenAI.yaml
+    path: ./providers/OpenAI.yaml
+
+dns:
+  nameserver-policy:
+    "geosite:cn":
+      - 223.5.5.5
+      - 119.29.29.29
+  enable: true
+  listen: 0.0.0.0:53
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.alidns.com/dns-query#h3=true
+    - https://doh.pub/dns-query
+    - https://dns.google/dns-query#🚀 节点选择
+    - https://mozilla.cloudflare-dns.com/dns-query#🚀 节点选择
+    - 223.5.5.5
+    - 119.29.29.29
+    - 1.1.1.1#🚀 节点选择
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+    geosite:
+      - gfw
