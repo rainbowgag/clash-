@@ -1,0 +1,108 @@
+
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+
+pr: &pr
+  proxies:  #↓↓下面填入节点名称
+    - 美国1
+ 
+
+
+
+
+proxies:   #↓↓下面填入节点信息
+ # - {name: 美国1, type: vless, server: 38.92.1.3, port: 443, uuid: e872f5a4, udp: true, network: tcp, tls: true, servername: apple.com, client-fingerprint: firefox, reality-opts: {public-key: 1n59w8, short-id: 6d313}}
+
+
+  
+ 
+rules:
+ # - SRC-IP-CIDR,192.168.100.2/32,美国1-detg1hdj
+  - RULE-SET,private_ip,🎯 全球直连,no-resolve
+  - RULE-SET,Microsoft,🪟微软
+  - RULE-SET,MicrosoftIP,🪟微软,no-resolve  
+  - RULE-SET,cn_domain,🎯 全球直连
+  - RULE-SET,geolocation-!cn,🐟 漏网之鱼
+  - RULE-SET,cn_ip,🎯 全球直连
+  - MATCH,🐟 漏网之鱼
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    <<: *pr        
+    
+  - name: 🪟微软
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - DIRECT
+
+  - name: 🎯 全球直连
+    type: select
+    proxies:
+      - DIRECT
+      - 🚀 节点选择
+
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - DIRECT
+
+
+rule-anchor:
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}
+rule-providers:
+  private_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
+  cn_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
+  geolocation-!cn:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs"
+  Microsoft:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs"
+  MicrosoftIP:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/microsoft.mrs" 
+  private_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
+  cn_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
+
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+
+  fake-ip-filter:
+    - '*.flysub.org'
+    - '*.yaml.uk'
+    - '*.yuanbaoart.cn'
+    - 'yuanbaoart.cn'
+    - "*.lan"
+    - "*.local"
+    - localhost
+    - "*.home.arpa"
+
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  proxy-server-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.google/dns-query
+    - https://cloudflare-dns.com/dns-query
+  nameserver-policy:
+    "geosite:cn":
+      - 223.5.5.5
+      - 119.29.29.29
