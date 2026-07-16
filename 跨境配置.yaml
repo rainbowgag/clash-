@@ -106,3 +106,6 @@ dns:
     "geosite:cn":
       - 223.5.5.5
       - 119.29.29.29
+    "geosite:geolocation-!cn":
+      - "https://cloudflare-dns.com/dns-query#🚀 节点选择"
+      - "https://dns.google/dns-query#🚀 节点选择"
