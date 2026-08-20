@@ -1,0 +1,94 @@
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+ipv6: false
+pr: &pr
+  proxies:  #====↓↓↓下面填写节点名称，注意和上面↑↑对齐，注意是添加节点名称！不是节点信息
+
+
+ 
+proxies:   #↓↓下面填入节点信息
+  
+  
+  
+rules:
+  - RULE-SET,private_ip,🎯 全球直连,no-resolve
+  - RULE-SET,Microsoft,🪟微软
+  - RULE-SET,cn_domain,🎯 全球直连
+  - RULE-SET,geolocation-!cn,🐟 漏网之鱼
+  - RULE-SET,cn_ip,🎯 全球直连
+  - MATCH,🐟 漏网之鱼
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    <<: *pr
+        
+  - name: 🪟微软
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - DIRECT
+      
+  - name: 🎯 全球直连
+    type: select
+    proxies:
+      - DIRECT
+      - 🚀 节点选择
+    
+  - name: 🐟 漏网之鱼
+    type: select
+    proxies:
+      - 🚀 节点选择
+      - DIRECT
+
+rule-anchor:
+  ip: &ip {type: http, interval: 86400, behavior: ipcidr, format: mrs}
+  domain: &domain {type: http, interval: 86400, behavior: domain, format: mrs}
+rule-providers:
+  private_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/private.mrs"
+  cn_domain:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.mrs"
+  geolocation-!cn:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/geolocation-!cn.mrs"
+  Microsoft:
+    <<: *domain
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/microsoft.mrs" 
+  private_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/private.mrs"
+  cn_ip:
+    <<: *ip
+    url: "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geoip/cn.mrs"
+
+
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+
+  fake-ip-filter:
+    - '*.flysub.org'
+    - '*.yaml.uk'
+    - '*.yuanbaoart.cn'
+    - 'yuanbaoart.cn'
+    - "*.lan"
+    - "*.local"
+    - localhost
+    - "*.home.arpa"
+
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  proxy-server-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.google/dns-query#🚀 节点选择
+    - https://cloudflare-dns.com/dns-query#🚀 节点选择
+
